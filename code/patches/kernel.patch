@@ -1,0 +1,100 @@
+diff --git a/arch/riscv/kernel/irq.c b/arch/riscv/kernel/irq.c
+index 48e6b7db83a1..4576d63f9382 100644
+--- a/arch/riscv/kernel/irq.c
++++ b/arch/riscv/kernel/irq.c
+@@ -17,7 +17,7 @@
+ #define INTERRUPT_CAUSE_SOFTWARE    1
+ #define INTERRUPT_CAUSE_TIMER       5
+ #define INTERRUPT_CAUSE_EXTERNAL    9
++/* RetTag: begin */
++#define INTERRUPT_CAUSE_ROCC        12
++/* RetTag: end */
+ /*
+  * The high order bit of the trap cause register is always set for
+  * interrupts, which allows us to differentiate them from exceptions
+@@ -53,6 +53,11 @@ asmlinkage void __irq_entry do_IRQ(struct pt_regs *regs)
+ 	case INTERRUPT_CAUSE_EXTERNAL:
+ 		handle_arch_irq(regs);
+ 		break;
++/* RetTag: begin */
++    case INTERRUPT_CAUSE_ROCC:
++        printk("[RoCC Interrupt] Authentication Failure");
++        exit(1);
++        break;
++/* RetTag: end */   
+ 	default:
+ 		panic("unexpected interrupt cause");
+ 	}
+
+diff --git a/arch/riscv/kernel/process.c b/arch/riscv/kernel/process.c
+index bef19993ea92..0f0d107c4d2e 100644
+--- a/arch/riscv/kernel/process.c
++++ b/arch/riscv/kernel/process.c
+@@ -76,7 +76,7 @@ void show_regs(struct pt_regs *regs)
+ void start_thread(struct pt_regs *regs, unsigned long pc,
+ 	unsigned long sp)
+ {
+-	regs->sstatus = SR_SPIE;
++/* RetTag: begin */
++	regs->sstatus = SR_SPIE | SR_XS_INITIAL;
++/* RetTag: end */
+ 	if (has_fpu)
+ 		regs->sstatus |= SR_FS_INITIAL;
+ 	regs->sepc = pc;
+
+diff --git a/drivers/spi/spi-xilinx.c b/drivers/spi/spi-xilinx.c
+index 63fedc49ae9c..c76b55ec9e92 100644
+--- a/drivers/spi/spi-xilinx.c
++++ b/drivers/spi/spi-xilinx.c
+@@ -22,15 +22,17 @@
+ #include <linux/spi/xilinx_spi.h>
+ #include <linux/io.h>
+ 
+ #define XILINX_SPI_MAX_CS	32
+ 
+ #define XILINX_SPI_NAME "xilinx_spi"
+
++/* RetTag: begin */ 
++#define XSPI_dummy_power_ctrl 0x00
++/* RetTag: end */
++
+ /* Register definitions as per "OPB Serial Peripheral Interface (SPI) (v1.00e)
+  * Product Specification", DS464
+  */
+ #define XSPI_CR_OFFSET		0x60	/* Control Register */
+ #define XSPI_CR_LOOP		0x01
+ #define XSPI_CR_ENABLE		0x02
+ #define XSPI_CR_MASTER_MODE	0x04
+@@ -166,6 +168,10 @@ static void xspi_init_hw(struct xilinx_spi *xspi)
+ {
+ 	void __iomem *regs_base = xspi->regs;
+
++   /* RetTag: begin */ 
++	xspi->write_fn(1, regs_base + XSPI_dummy_power_ctrl);
++   /* RetTag: end */ 
++
+ 	/* Reset the SPI device */
+ 	xspi->write_fn(XIPIF_V123B_RESET_MASK,
+ 		regs_base + XIPIF_V123B_RESETR_OFFSET);
+@@ -183,6 +189,10 @@ static void xspi_init_hw(struct xilinx_spi *xspi)
+ 	xspi->write_fn(XSPI_CR_MANUAL_SSELECT |	XSPI_CR_MASTER_MODE |
+ 		XSPI_CR_ENABLE | XSPI_CR_TXFIFO_RESET |	XSPI_CR_RXFIFO_RESET,
+ 		regs_base + XSPI_CR_OFFSET);
++
++   /* RetTag: begin */ 
++	xspi->write_fn(0, regs_base + XSPI_dummy_power_ctrl);
++   /* RetTag: end */
+ }
+ 
+ static void xilinx_spi_chipselect(struct spi_device *spi, int is_on)
+@@ -517,7 +527,10 @@ static int xilinx_spi_remove(struct platform_device *pdev)
+ 	xspi->write_fn(0, regs_base + XIPIF_V123B_IIER_OFFSET);
+ 	/* Disable the global IPIF interrupt */
+ 	xspi->write_fn(0, regs_base + XIPIF_V123B_DGIER_OFFSET);
+	
++   /* RetTag: end */
++	xspi->write_fn(1, regs_base + XSPI_dummy_power_ctrl);
++   /* RetTag: end */
+ 	spi_master_put(xspi->bitbang.master);
+ 
+ 	return 0;

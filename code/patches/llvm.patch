@@ -1,0 +1,645 @@
+diff --git a/llvm/include/llvm/PARTS/PartsType.h b/llvm/include/llvm/PARTS/PartsType.h
+new file mode 100644
+index 00000000000..0f7251d70e3
+--- /dev/null
++++ b/llvm/include/llvm/PARTS/PartsType.h
+@@ -0,0 +1,22 @@
++#include "llvm/CodeGen/MachineInstr.h"
++#include "llvm/IR/Metadata.h"
++namespace llvm {
++class PartsType;
++typedef std::shared_ptr<PartsType> PartsType_ptr;
++
++class PartsType{
++  uint64_t type_id=0;
++private:
++
++public:
++  explicit PartsType(uint64_t type_id);
++  static inline PartsType_ptr get(uint64_t type_id) {
++    return std::make_shared<PartsType>(type_id);
++  };
++  static uint64_t idFromType(const Type *const type);
++  static uint64_t idFromType(uint64_t type);
++  std::string toString();
++};
++
++}
+diff --git a/llvm/include/llvm/PARTS/sha256.h b/llvm/include/llvm/PARTS/sha256.h
+new file mode 100644
+index 00000000000..f8aff56b5e4
+--- /dev/null
++++ b/llvm/include/llvm/PARTS/sha256.h
+@@ -0,0 +1,54 @@
++#pragma once
++#ifndef SHA256_H
++#define SHA256_H
++#include <string>
++class SHA256
++{
++protected:
++	typedef unsigned char uint8;
++	typedef unsigned int uint32;
++	typedef unsigned long long uint64;
++
++	const static uint32 sha256_k[];
++	static const unsigned int SHA224_256_BLOCK_SIZE = (512/8);
++public:
++	void init();
++	void update(const unsigned char *message, unsigned int len);
++	void final(unsigned char *digest);
++	static const unsigned int DIGEST_SIZE = ( 256 / 8);
++
++protected:
++	void transform(const unsigned char *message, unsigned int block_nb);
++	unsigned int m_tot_len;
++	unsigned int m_len;
++	unsigned char m_block[2*SHA224_256_BLOCK_SIZE];
++	uint32 m_h[8];
++};
++
++std::string sha256(std::string input);
++int papapa();
++#define SHA2_SHFR(x, n)    (x >> n)
++#define SHA2_ROTR(x, n)   ((x >> n) | (x << ((sizeof(x) << 3) - n)))
++#define SHA2_ROTL(x, n)   ((x << n) | (x >> ((sizeof(x) << 3) - n)))
++#define SHA2_CH(x, y, z)  ((x & y) ^ (~x & z))
++#define SHA2_MAJ(x, y, z) ((x & y) ^ (x & z) ^ (y & z))
++#define SHA256_F1(x) (SHA2_ROTR(x,  2) ^ SHA2_ROTR(x, 13) ^ SHA2_ROTR(x, 22))
++#define SHA256_F2(x) (SHA2_ROTR(x,  6) ^ SHA2_ROTR(x, 11) ^ SHA2_ROTR(x, 25))
++#define SHA256_F3(x) (SHA2_ROTR(x,  7) ^ SHA2_ROTR(x, 18) ^ SHA2_SHFR(x,  3))
++#define SHA256_F4(x) (SHA2_ROTR(x, 17) ^ SHA2_ROTR(x, 19) ^ SHA2_SHFR(x, 10))
++#define SHA2_UNPACK32(x, str)                 \
++{                                             \
++    *((str) + 3) = (uint8) ((x)      );       \
++    *((str) + 2) = (uint8) ((x) >>  8);       \
++    *((str) + 1) = (uint8) ((x) >> 16);       \
++    *((str) + 0) = (uint8) ((x) >> 24);       \
++}
++#define SHA2_PACK32(str, x)                   \
++{                                             \
++    *(x) =   ((uint32) *((str) + 3)      )    \
++           | ((uint32) *((str) + 2) <<  8)    \
++           | ((uint32) *((str) + 1) << 16)    \
++           | ((uint32) *((str) + 0) << 24);   \
++}
++#endif
+diff --git a/llvm/lib/CMakeLists.txt b/llvm/lib/CMakeLists.txt
+index 8f8d417124c..fc396bf5600 100644
+--- a/llvm/lib/CMakeLists.txt
++++ b/llvm/lib/CMakeLists.txt
+@@ -30,6 +30,9 @@ add_subdirectory(Passes)
+ add_subdirectory(TextAPI)
+ add_subdirectory(ToolDrivers)
+ add_subdirectory(XRay)
++add_subdirectory(PARTS)
++
+ if (LLVM_INCLUDE_TESTS)
+   add_subdirectory(Testing)
+ endif()
+Binary files /dev/null and b/llvm/lib/PARTS.tar.xz differ
+diff --git a/llvm/lib/PARTS/CMakeLists.txt b/llvm/lib/PARTS/CMakeLists.txt
+new file mode 100644
+index 00000000000..50f86a56d3b
+--- /dev/null
++++ b/llvm/lib/PARTS/CMakeLists.txt
+@@ -0,0 +1,28 @@
++
++add_llvm_library(Parts
++  PartsIntr.cpp
++  PartsType.cpp
++ 
++  ADDITIONAL_HEADER_DIRS
++  ${LLVM_MAIN_INCLUDE_DIR}/llvm/PARTS
++  ${LLVM_MAIN_INCLUDE_DIR}/llvm/Support
++  ${LLVM_MAIN_INCLUDE_DIR}/llvm/IR
++
++  DEPENDS
++  
++  intrinsics_gen
++  LLVMCore
++  LLVMSupport
++  LLVMCodeGen
++  #LLVMObject
++
++  LINK_LIBS
++  
++  LLVMCore
++  LLVMSupport
++  LLVMCodeGen 
++  #LLVMObject
++  )
++
++set_property(TARGET Parts PROPERTY LLVM_SYSTEM_LIBS)
+diff --git a/llvm/lib/PARTS/PartsType.cpp b/llvm/lib/PARTS/PartsType.cpp
+new file mode 100644
+index 00000000000..923a0dbbcb6
+--- /dev/null
++++ b/llvm/lib/PARTS/PartsType.cpp
+@@ -0,0 +1,235 @@
++#include "llvm/CodeGen/MachineInstr.h"
++#include "llvm/IR/Metadata.h"
++#include "llvm/PARTS/PartsType.h"
++#include "llvm/PARTS/sha256.h"
++#include <sstream>
++#include "iostream"
++#include<fstream>
++using namespace std;
++
++using namespace llvm;
++
++//typedef std::shared_ptr<PartsType> PartsType;
++
++uint64_t PartsType::idFromType(const Type *const type)
++{
++  uint64_t type_id = 0;
++  // Generate a std::string from type
++  std::string type_str;
++  llvm::raw_string_ostream rso(type_str);
++  type->print(rso);
++
++  auto c_string = rso.str().c_str();
++
++#ifdef PARTS_USE_SHA3
++
++  // Prepare SHA3 generation
++  mbedtls_sha3_context sha3_context;
++  mbedtls_sha3_type_t sha3_type = MBEDTLS_SHA3_256;
++  mbedtls_sha3_init(&sha3_context);
++
++  // Prepare input and output variables
++  auto *input = reinterpret_cast<const unsigned char*>(c_string);
++  auto *output= new unsigned char[32]();
++
++  // Generate hash
++  auto result = mbedtls_sha3(input, type_str.length(), sha3_type, output);
++  if (result != 0)
++    llvm_unreachable("SHA3 hashing failed :(");
++
++  memcpy(&type_id, output, sizeof(uint64_t));
++
++  //const auto original_type_id = type_id;
++  //type_id = type_id % UINT8_MAX;
++
++#endif
++  return type_id;
++}
++
++
++uint64_t PartsType::idFromType(uint64_t type)
++{
++  uint64_t type_id = 0;
++  // Generate a std::string from type
++  std::string type_str;
++  std::ostringstream o;
++  o << type;
++  type_str += o.str();
++
++std::vector<std::string> input = {type_str};
++
++	std::string output;
++	
++	for (auto it = input.begin(); it<input.end(); it++){
++		output=sha256(*it);
++
++	//cout << "sha256('"<< *it << "'):" << output << endl;
++
++	}
++std::string output2=output.substr(0,16);
++
++  const char *put;
++  put=output2.data();
++  type_id=strtoull(output2.data(),NULL,16);
++  return type_id;
++}
++
++int papapa()
++{
++	return 2;
++}
++const unsigned int SHA256::sha256_k[64] = //UL = uint32
++{0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
++0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
++0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
++0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
++0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc,
++0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
++0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
++0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
++0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
++0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
++0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3,
++0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
++0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5,
++0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
++0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
++0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2};
++
++void SHA256::transform(const unsigned char *message, unsigned int block_nb)
++{
++	uint32 w[64];
++	uint32 wv[8];
++	uint32 t1, t2;
++	const unsigned char *sub_block;
++	int i;
++	int j;
++	for (i = 0; i < (int) block_nb; i++) {
++		sub_block = message + (i << 6);
++		for (j = 0; j < 16; j++) {
++			SHA2_PACK32(&sub_block[j << 2], &w[j]);
++		}
++		for (j = 16; j < 64; j++) {
++			w[j] =  SHA256_F4(w[j -  2]) + w[j -  7] + SHA256_F3(w[j - 15]) + w[j - 16];
++		}
++		for (j = 0; j < 8; j++) {
++			wv[j] = m_h[j];
++		}
++		for (j = 0; j < 64; j++) {
++			t1 = wv[7] + SHA256_F2(wv[4]) + SHA2_CH(wv[4], wv[5], wv[6])
++				+ sha256_k[j] + w[j];
++			t2 = SHA256_F1(wv[0]) + SHA2_MAJ(wv[0], wv[1], wv[2]);
++			wv[7] = wv[6];
++			wv[6] = wv[5];
++			wv[5] = wv[4];
++			wv[4] = wv[3] + t1;
++			wv[3] = wv[2];
++			wv[2] = wv[1];
++			wv[1] = wv[0];
++			wv[0] = t1 + t2;
++		}
++		for (j = 0; j < 8; j++) {
++			m_h[j] += wv[j];
++		}
++	}
++}
++
++void SHA256::init()
++{
++	m_h[0] = 0x6a09e667;
++	m_h[1] = 0xbb67ae85;
++	m_h[2] = 0x3c6ef372;
++	m_h[3] = 0xa54ff53a;
++	m_h[4] = 0x510e527f;
++	m_h[5] = 0x9b05688c;
++	m_h[6] = 0x1f83d9ab;
++	m_h[7] = 0x5be0cd19;
++	m_len = 0;
++	m_tot_len = 0;
++}
++
++void SHA256::update(const unsigned char *message, unsigned int len)
++{
++	unsigned int block_nb;
++	unsigned int new_len, rem_len, tmp_len;
++	const unsigned char *shifted_message;
++	tmp_len = SHA224_256_BLOCK_SIZE - m_len;
++	rem_len = len < tmp_len ? len : tmp_len;
++	memcpy(&m_block[m_len], message, rem_len);
++	if (m_len + len < SHA224_256_BLOCK_SIZE) {
++		m_len += len;
++		return;
++	}
++	new_len = len - rem_len;
++	block_nb = new_len / SHA224_256_BLOCK_SIZE;
++	shifted_message = message + rem_len;
++	transform(m_block, 1);
++	transform(shifted_message, block_nb);
++	rem_len = new_len % SHA224_256_BLOCK_SIZE;
++	memcpy(m_block, &shifted_message[block_nb << 6], rem_len);
++	m_len = rem_len;
++	m_tot_len += (block_nb + 1) << 6;
++}
++
++void SHA256::final(unsigned char *digest)
++{
++	unsigned int block_nb;
++	unsigned int pm_len;
++	unsigned int len_b;
++	int i;
++	block_nb = (1 + ((SHA224_256_BLOCK_SIZE - 9)
++		< (m_len % SHA224_256_BLOCK_SIZE)));
++	len_b = (m_tot_len + m_len) << 3;
++	pm_len = block_nb << 6;
++	memset(m_block + m_len, 0, pm_len - m_len);
++	m_block[m_len] = 0x80;
++	SHA2_UNPACK32(len_b, m_block + pm_len - 4);
++	transform(m_block, block_nb);
++	for (i = 0 ; i < 8; i++) {
++		SHA2_UNPACK32(m_h[i], &digest[i << 2]);
++	}
++}
++
++std::string sha256(std::string input)
++{
++	unsigned char digest[SHA256::DIGEST_SIZE];
++	memset(digest,0,SHA256::DIGEST_SIZE);
++
++	SHA256 ctx = SHA256();
++	ctx.init();
++	ctx.update( (unsigned char*)input.c_str(), input.length());
++	ctx.final(digest);
++
++	char buf[2*SHA256::DIGEST_SIZE+1];
++	buf[2*SHA256::DIGEST_SIZE] = 0;
++	for (int i = 0; i < SHA256::DIGEST_SIZE; i++)
++		sprintf(buf+i*2, "%02x", digest[i]);
++	return std::string(buf);
++}
+diff --git a/llvm/lib/Target/RISCV/CMakeLists.txt b/llvm/lib/Target/RISCV/CMakeLists.txt
+index 31a82be1981..07dc887a9b3 100644
+--- a/llvm/lib/Target/RISCV/CMakeLists.txt
++++ b/llvm/lib/Target/RISCV/CMakeLists.txt
+@@ -34,7 +34,15 @@ add_llvm_target(RISCVCodeGen
+   RISCVTargetMachine.cpp
+   RISCVTargetObjectFile.cpp
+   RISCVTargetTransformInfo.cpp
+-  )
++  PartsFrameLowering.cpp
++  PartsPassIntrinsics.cpp
++  ../../PARTS/PartsType.cpp
++
++  DEPENDS
++  #intrinsics_gen
++)
+ 
+ add_subdirectory(AsmParser)
+ add_subdirectory(Disassembler)
+diff --git a/llvm/lib/Target/RISCV/PartsFrameLowering.cpp b/llvm/lib/Target/RISCV/PartsFrameLowering.cpp
+new file mode 100644
+index 00000000000..c6971a6b903
+--- /dev/null
++++ b/llvm/lib/Target/RISCV/PartsFrameLowering.cpp
+@@ -0,0 +1,64 @@
++#include "PartsFrameLowering.h"
++#include "llvm/CodeGen/MachineInstrBuilder.h"
++#include "RISCVRegisterInfo.h"
++#include "RISCVInstrInfo.h"
++#include "RISCV.h"
++#include "iostream"
++#include <fstream>
++#include "llvm/PARTS/PartsType.h"
++using namespace std;
++using namespace llvm;
++void PartsFrameLowering::instrumentPrologue(const TargetInstrInfo *TII, const TargetRegisterInfo *TRI,
++                                  MachineBasicBlock &MBB, MachineBasicBlock::iterator &MBBI,
++                                  const DebugLoc &DL) {
++  auto &F = MBB.getParent()->getFunction();
++  auto F1 = MBB.getParent()->getFunctionNumber();
++  auto modReg = RISCV::X30;
++  auto loc = (MBBI != MBB.end() ?&*MBBI : nullptr);
++  PartsFrameLowering::insertPAInstr(MBB, &*MBBI, RISCV::X1, modReg, TII->get(RISCV::PACIB), DebugLoc(),TII);
++}
++
++void PartsFrameLowering::instrumentEpilogue(const TargetInstrInfo *TII, const TargetRegisterInfo *TRI,
++                                            MachineBasicBlock &MBB, MachineBasicBlock::iterator &MBBI,
++                                            const DebugLoc &DL) {
++  auto modReg = RISCV::X1;
++  auto loc = (MBBI != MBB.end() ?&*MBBI : nullptr);
++  PartsFrameLowering::insertPAInstr(MBB, &*MBBI, RISCV::X1, modReg, TII->get(RISCV::AUTIB), DebugLoc(),TII);
++}
++
++void PartsFrameLowering::insertPAInstr(MachineBasicBlock &MBB, MachineBasicBlock::instr_iterator MIi, unsigned ptrReg,
++                               unsigned modReg, const MCInstrDesc &MCID, const DebugLoc &DL,const TargetInstrInfo *TII) {
++  insertPAInstr(MBB, (MBB.instr_end() == MIi ? nullptr : &*MIi), ptrReg, modReg, MCID, DL,TII);
++}
++
++void PartsFrameLowering::insertPAInstr(MachineBasicBlock &MBB, MachineInstr *MIi, unsigned ptrReg,
++                               unsigned modReg, const MCInstrDesc &MCID, const DebugLoc &DL,const TargetInstrInfo *TII) {
++  auto &F = MBB.getParent()->getFunction();
++  auto F1 = MBB.getParent()->getFunctionNumber();
++  // cout << "&F"<<&F<<endl;
++  // cout << MBB.getParent()->getFunction().getType()<<endl;
++  // cout << "&F"<<&F<<endl;
++  // cout << "F"<<F<<endl;
++  // cout << "F.getType()"<<F.getType()<<endl;
++  uint64_t  type_id = PartsType::idFromType(F1);
++  const auto t1 = type_id & 0xfffff;
++  const auto t2 = (type_id >> 20) & 0xfff;
++  // const auto t3 = (type_id >> 32) & 0xfffff;
++  const auto t4 = type_id & 0xffffffffffff0000;
++  if (MIi == nullptr) {
++    BuildMI(&MBB, DL, MCID).addReg(RISCV::X1).addReg(RISCV::X1).addReg(RISCV::X1);
++  } else {
++    BuildMI(MBB, MIi, DL, TII->get(RISCV::LUI),RISCV::X30).addImm(t1);
++    BuildMI(MBB, MIi, DL, TII->get(RISCV::ADDI),RISCV::X30).addReg(RISCV::X30).addImm(t2);
++    BuildMI(MBB, MIi, DL, TII->get(RISCV::SLLI),RISCV::X30).addReg(RISCV::X30).addImm(32);
++    BuildMI(MBB, MIi, DL, TII->get(RISCV::ADD),RISCV::X30).addReg(RISCV::X30).addReg(RISCV::X2);
++    BuildMI(MBB, MIi, DL, MCID, RISCV::X1).addReg(RISCV::X30).addReg(RISCV::X1); //rs2 rs1 rd
++
++    // BuildMI(MBB, MIi, DL, TII->get(RISCV::PseudoLI),RISCV::X30).addImm(t4);
++    // BuildMI(MBB, MIi, DL, TII->get(RISCV::SRLI),RISCV::X31).addReg(RISCV::X2).addImm(48);
++    // BuildMI(MBB, MIi, DL, TII->get(RISCV::ADD),RISCV::X30).addReg(RISCV::X30).addReg(RISCV::X31);
++    // BuildMI(MBB, MIi, DL, MCID, RISCV::X1).addReg(RISCV::X30).addReg(RISCV::X1); //rd rs1 rs2
++    }
++}
++
++
+diff --git a/llvm/lib/Target/RISCV/PartsFrameLowering.h b/llvm/lib/Target/RISCV/PartsFrameLowering.h
+new file mode 100644
+index 00000000000..39cc7527997
+--- /dev/null
++++ b/llvm/lib/Target/RISCV/PartsFrameLowering.h
+@@ -0,0 +1,47 @@
++#ifndef LLVM_PARTSFRAMELOWERING_H
++#define LLVM_PARTSFRAMELOWERING_H
++
++#include "llvm/CodeGen/MachineBasicBlock.h"
++#include "RISCVRegisterInfo.h"
++#include "RISCVInstrInfo.h"
++#include "RISCV.h"
++#include "llvm/CodeGen/MachineInstr.h"
++#include "llvm/IR/Metadata.h"
++
++namespace llvm {
++class PartsFrameLowering;
++typedef std::shared_ptr<PartsFrameLowering> PartsFrameLowering_ptr;
++class PartsFrameLowering {
++  const TargetInstrInfo *TII;
++  const TargetRegisterInfo *TRI;
++public:
++  static inline PartsFrameLowering_ptr get() {
++  return std::make_shared<PartsFrameLowering>();
++}
++
++  void instrumentEpilogue(const TargetInstrInfo *TII, const TargetRegisterInfo *TRI,
++                          MachineBasicBlock &MBB, MachineBasicBlock::iterator &MBBI,
++                          const DebugLoc &DL);
++
++  void instrumentPrologue(const TargetInstrInfo *TII, const TargetRegisterInfo *TRI,
++                          MachineBasicBlock &MBB, MachineBasicBlock::iterator &MBBI,
++                          const DebugLoc &DL);
++
++  void insertPAInstr(MachineBasicBlock &MBB, MachineInstr *MIi, unsigned ptrReg,
++                               unsigned modReg, const MCInstrDesc &MCID, const DebugLoc &DL,const TargetInstrInfo *TII);
++  void insertPAInstr(MachineBasicBlock &MBB, MachineBasicBlock::instr_iterator MIi, unsigned ptrReg,
++                               unsigned modReg, const MCInstrDesc &MCID, const DebugLoc &DL,const TargetInstrInfo *TII);
++};
++}
++#endif //LLVM_PARTSFRAMELOWERING_H
++
+diff --git a/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp b/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp
+index 915889ac127..1ebb331fe9d 100644
+--- a/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp
++++ b/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp
+@@ -20,9 +20,10 @@
+ #include "llvm/CodeGen/RegisterScavenging.h"
+ #include "llvm/IR/DiagnosticInfo.h"
+ #include "llvm/MC/MCDwarf.h"
++#include "PartsFrameLowering.h"
+ 
+ using namespace llvm;
+-
++//using namespace llvm::PARTS;
+ // Get the ID of the libcall used for spilling and restoring callee saved
+ // registers. The ID is representative of the number of registers saved or
+ // restored by the libcall, except it is zero-indexed - ID 0 corresponds to a
+@@ -221,7 +222,7 @@ void RISCVFrameLowering::emitPrologue(MachineFunction &MF,
+   Register FPReg = getFPReg(STI);
+   Register SPReg = getSPReg(STI);
+   Register BPReg = RISCVABI::getBPReg();
+-
++    
+   // Since spillCalleeSavedRegisters may have inserted a libcall, skip past
+   // any instructions marked as FrameSetup
+   while (MBBI != MBB.end() && MBBI->getFlag(MachineInstr::FrameSetup))
+@@ -280,10 +281,13 @@ void RISCVFrameLowering::emitPrologue(MachineFunction &MF,
+     StackSize = FirstSPAdjustAmount;
+     RealStackSize = FirstSPAdjustAmount;
+   } 
++  /* RetTag: begin */
++  PARTS->instrumentPrologue(TII, STI.getRegisterInfo(), MBB, MBBI, DebugLoc());
+   // Allocate space on the stack if necessary.
+   adjustReg(MBB, MBBI, DL, SPReg, SPReg, -StackSize, MachineInstr::FrameSetup);
++  /* RetTag: end */
+   // Emit ".cfi_def_cfa_offset RealStackSize"
+   unsigned CFIIndex = MF.addFrameInst(
+       MCCFIInstruction::createDefCfaOffset(nullptr, -RealStackSize));
+@@ -440,6 +444,7 @@ void RISCVFrameLowering::emitEpilogue(MachineFunction &MF,
+     assert(hasFP(MF) && "frame pointer should not have been eliminated");
+     adjustReg(MBB, LastFrameDestroy, DL, SPReg, FPReg, -FPOffset,
+               MachineInstr::FrameDestroy);
++
+   }
+ 
+   uint64_t FirstSPAdjustAmount = getFirstSPAdjustAmount(MF);
+@@ -454,9 +459,17 @@ void RISCVFrameLowering::emitEpilogue(MachineFunction &MF,
+ 
+   if (FirstSPAdjustAmount)
+     StackSize = FirstSPAdjustAmount;
+-
+   // Deallocate stack
++
++
+   adjustReg(MBB, MBBI, DL, SPReg, SPReg, StackSize, MachineInstr::FrameDestroy);
++  /* RetTag: begin */
++  if (MFI.getStackSize() - FirstSPAdjustAmount > 0){  
++    const RISCVInstrInfo *TII = STI.getInstrInfo();
++    PARTS->instrumentEpilogue(TII, RI, MBB, MBBI, DebugLoc());
++  }
++  /* RetTag: end */
+ }
+ 
+ int RISCVFrameLowering::getFrameIndexReference(const MachineFunction &MF,
+diff --git a/llvm/lib/Target/RISCV/RISCVFrameLowering.h b/llvm/lib/Target/RISCV/RISCVFrameLowering.h
+index 1517c847a04..fd3b1a0717a 100644
+--- a/llvm/lib/Target/RISCV/RISCVFrameLowering.h
++++ b/llvm/lib/Target/RISCV/RISCVFrameLowering.h
+@@ -14,6 +14,7 @@
+ #define LLVM_LIB_TARGET_RISCV_RISCVFRAMELOWERING_H
+ 
+ #include "llvm/CodeGen/TargetFrameLowering.h"
++#include "PartsFrameLowering.h"
+ 
+ namespace llvm {
+ class RISCVSubtarget;
+@@ -68,6 +69,10 @@ protected:
+   const RISCVSubtarget &STI;
+ 
+ private:
++  PartsFrameLowering_ptr PARTS = PartsFrameLowering::get();
++
+   void determineFrameLayout(MachineFunction &MF) const;
+   void adjustReg(MachineBasicBlock &MBB, MachineBasicBlock::iterator MBBI,
+                  const DebugLoc &DL, Register DestReg, Register SrcReg,
+diff --git a/llvm/lib/Target/RISCV/RISCVInstrFormats.td b/llvm/lib/Target/RISCV/RISCVInstrFormats.td
+index 3ed10cca537..7307c947969 100644
+--- a/llvm/lib/Target/RISCV/RISCVInstrFormats.td
++++ b/llvm/lib/Target/RISCV/RISCVInstrFormats.td
+@@ -75,6 +75,7 @@ def OPC_BRANCH    : RISCVOpcode<0b1100011>;
+ def OPC_JALR      : RISCVOpcode<0b1100111>;
+ def OPC_JAL       : RISCVOpcode<0b1101111>;
+ def OPC_SYSTEM    : RISCVOpcode<0b1110011>;
++def OPC_PACAUTH   : RISCVOpcode<0b0001011>;
+ 
+ class RVInst<dag outs, dag ins, string opcodestr, string argstr,
+              list<dag> pattern, InstFormat format>
+@@ -313,3 +314,35 @@ class RVInstJ<RISCVOpcode opcode, dag outs, dag ins, string opcodestr,
+   let Inst{11-7} = rd;
+   let Opcode = opcode.Value;
+ }
++
++/* RetTag: begin */
++class SignAuthOneData<bits<7> funct7, bits<3> funct3, string asm>
++: RVInstR<funct7,funct3, OPC_PACAUTH,(outs GPR:$Rd), (ins GPR:$Rs1,  GPR:$Rs2), asm, "$Rd, $Rs1, $Rs2" >,
++    Sched<[WriteIALU, ReadIALU]> {
++  bits<5> rs2;
++  bits<5> rs1;
++  bits<5> rd;
++  let Inst{31-25} = funct7;
++  let Inst{24-20} = rs2;
++  let Inst{19-15} = rs1;
++  let Inst{14-12} = funct3;
++  let Inst{11-7} = rd;
++  let Opcode = OPC_PACAUTH.Value;
++}
++
++class PARTS<bits<7> funct7, bits<3> funct3, string asm>
++    : RVInstR<funct7,funct3, OPC_PACAUTH,(outs GPR:$Rd), (ins GPR:$Rs1,  GPR:$Rs2), asm, "$Rd, $Rs1, $Rs2">{
++
++  bits<5> rs2;
++  bits<5> rs1;
++  bits<5> rd;
++  let Inst{31-25} = funct7;
++  let Inst{24-20} = rs2;
++  let Inst{19-15} = rs1;
++  let Inst{14-12} = funct3;
++  let Inst{11-7} = rd;
++  let Opcode = OPC_PACAUTH.Value;
++}
++/* RetTag: end */
+\ No newline at end of file
+diff --git a/llvm/lib/Target/RISCV/RISCVInstrInfo.td b/llvm/lib/Target/RISCV/RISCVInstrInfo.td
+index 12915100aa9..3eed4567dc7 100644
+--- a/llvm/lib/Target/RISCV/RISCVInstrInfo.td
++++ b/llvm/lib/Target/RISCV/RISCVInstrInfo.td
+@@ -1159,6 +1159,36 @@ def : Pat<(debugtrap), (EBREAK)>;
+ // Standard extensions
+ //===----------------------------------------------------------------------===//
+ 
++/* RetTag: begin */
++let hasSideEffects = 1,
++    mayStore = 1, mayLoad = 1 in
++multiclass SignAuth<bits<7> prefix,  string asm> {
++    def IA   : SignAuthOneData<prefix, 0b110, !strconcat(asm, "ib")>;
++    def IB   : SignAuthOneData<prefix, 0b111, !strconcat(asm, "ib")>;
++  }
++
++defm PAC : SignAuth< 0b0000000, "pac">;
++defm AUT : SignAuth< 0b0000001, "aut">;
++
++def SDT_PAC     : SDTypeProfile<1, 2, [SDTCisPtrTy<0>, SDTCisVT<1,i64>]>;
++
++def  ZACIA     : SDNode<"RISCVISD::ZACIA", SDT_PAC, [SDNPVariadic]>;
++
++let hasSideEffects = 0,
++    mayStore = 0, mayLoad = 0 in
++def PACIAA : PARTS <0b0000111,0b111,"paciaa">,Sched<[WriteIALU, ReadIALU]>;
++
++let isPseudo = 1 ,hasSideEffects = 0,
++    mayStore = 0, mayLoad = 1 in
++def PARTS_PACIA : Pseudo<(outs GPR:$rd), (ins GPR:$rs1, GPR:$rs2), [(set GPR:$rd, (int_riscv_zacia GPR:$rs1,GPR:$rs2))]>;
++/* RetTag: end */
++
+ include "RISCVInstrInfoM.td"
+ include "RISCVInstrInfoA.td"
+ include "RISCVInstrInfoF.td"

@@ -1,0 +1,70 @@
+diff --git a/machine/minit.c b/machine/minit.c
+index e6677e9..6f417d3 100644
+--- a/machine/minit.c
++++ b/machine/minit.c
+@@ -24,6 +24,9 @@ void* kernel_end;
+ static void mstatus_init()
+ {
+   uintptr_t mstatus = 0;
++  /* RetTag: begin */
++  mstatus |= MSTATUS_XS;
++  /* RetTag: end */
+ #if __riscv_xlen == 32
+   uint32_t mstatush = 0;
+ #endif
+@@ -56,10 +59,10 @@ static void mstatus_init()
+     write_csr(scounteren, -1);
+   if (supports_extension('U'))
+     write_csr(mcounteren, -1);
+-
+-  // Enable software interrupts
+-  write_csr(mie, MIP_MSIP);
+-
++  /* RetTag: begin */
++  // Enable software interrupts and RoCC interrupts  
++  write_csr(mie, MIP_MSIP | MIP_SGEIP);
++  /* RetTag: end */
+   // Disable paging
+   if (supports_extension('S'))
+     write_csr(satp, 0);
+@@ -70,8 +73,9 @@ static void delegate_traps()
+ {
+   if (!supports_extension('S'))
+     return;
+-
+-  uintptr_t interrupts = MIP_SSIP | MIP_STIP | MIP_SEIP;
++  /* RetTag: begin */
++  uintptr_t interrupts = MIP_SSIP | MIP_STIP | MIP_SEIP | MIP_SGEIP;
++  /* RetTag: end */
+   uintptr_t exceptions =
+     (1U << CAUSE_MISALIGNED_FETCH) |
+     (1U << CAUSE_FETCH_PAGE_FAULT) |
+diff --git a/pk/handlers.c b/pk/handlers.c
+index 4b4abaf..0cee986 100644
+--- a/pk/handlers.c
++++ b/pk/handlers.c
+@@ -85,8 +85,26 @@ static void handle_syscall(trapframe_t* tf)
+   tf->epc += 4;
+ }
+ 
++/* RetTag: begin */
++static void handle_rocc_interrupt(trapframe_t* tf)
++{
++  panic("[RoCC Interrupt] Authentication Failure"); 
++}
++/* RetTag: end */
++
+ static void handle_interrupt(trapframe_t* tf)
+ {
++  /* RetTag: begin */
++  typedef void (*trap_handler1)(trapframe_t*);
++  const static trap_handler1 trap_handlers1[] = {
++    [CAUSE_FETCH_PAGE_FAULT] = handle_rocc_interrupt,
++  };
++
++  trap_handler1 f = (void*)pa2kva(trap_handlers1[tf->cause&0x0ff]);
++
++  f(tf);
++  /* RetTag: end */  
+   clear_csr(sip, SIP_SSIP);
+ }
