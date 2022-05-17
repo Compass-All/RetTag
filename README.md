@@ -69,7 +69,7 @@ For the complete llvm project, please see [2](https://gitee.com/stwjt/llvm-proje
 
 ### Citation
 
-If you use this repository for research, please cite our USENIX Security paper:
+If you use this repository for research, please cite our paper:
 
 ```
 @inproceedings{wang2022rettag,
