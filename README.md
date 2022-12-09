@@ -10,7 +10,7 @@ $ git clone https://github.com/Compass-All/RetTag
 ```
 ## Contents
 
-- `patches/gcc.patch`: patch for RISC-V GNU Compiler Toolchain [^2] to recognize and emit custom instructions.
+- `patches/riscv-gcc.patch, patches/riscv-binutils.patch`: patch for RISC-V GNU Compiler Toolchain [^2] to recognize and emit custom instructions.
 - `patches/kernel.patch`: patch for Linux Kernel [^3] to handle RoCC interrupt when running on the FPGA.
 - `patches/llvm.patch`: patch for LLVM Compiler Infrastructure [^4] to recognize and emit custom instructions.
 - `patches/pk.patch`: patch for RISC-V Proxy Kernel and Boot Loader [^5] to support custom instructions and RoCC interrupt and handle RoCC interrupt when running on the emulator.
