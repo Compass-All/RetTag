@@ -1,9 +1,9 @@
 diff --git a/llvm/include/llvm/PARTS/PartsType.h b/llvm/include/llvm/PARTS/PartsType.h
 new file mode 100644
-index 00000000000..0f7251d70e3
+index 000000000000..8454f036cde3
 --- /dev/null
 +++ b/llvm/include/llvm/PARTS/PartsType.h
-@@ -0,0 +1,22 @@
+@@ -0,0 +1,21 @@
 +#include "llvm/CodeGen/MachineInstr.h"
 +#include "llvm/IR/Metadata.h"
 +namespace llvm {
@@ -27,10 +27,10 @@ index 00000000000..0f7251d70e3
 +}
 diff --git a/llvm/include/llvm/PARTS/sha256.h b/llvm/include/llvm/PARTS/sha256.h
 new file mode 100644
-index 00000000000..f8aff56b5e4
+index 000000000000..89f5149d0dc7
 --- /dev/null
 +++ b/llvm/include/llvm/PARTS/sha256.h
-@@ -0,0 +1,54 @@
+@@ -0,0 +1,53 @@
 +#pragma once
 +#ifndef SHA256_H
 +#define SHA256_H
@@ -85,37 +85,35 @@ index 00000000000..f8aff56b5e4
 +}
 +#endif
 diff --git a/llvm/lib/CMakeLists.txt b/llvm/lib/CMakeLists.txt
-index 8f8d417124c..fc396bf5600 100644
+index abe3ec59aec1..fb311fe3edbc 100644
 --- a/llvm/lib/CMakeLists.txt
 +++ b/llvm/lib/CMakeLists.txt
-@@ -30,6 +30,9 @@ add_subdirectory(Passes)
+@@ -31,6 +31,7 @@ add_subdirectory(Passes)
  add_subdirectory(TextAPI)
  add_subdirectory(ToolDrivers)
  add_subdirectory(XRay)
 +add_subdirectory(PARTS)
-+
  if (LLVM_INCLUDE_TESTS)
    add_subdirectory(Testing)
  endif()
-Binary files /dev/null and b/llvm/lib/PARTS.tar.xz differ
 diff --git a/llvm/lib/PARTS/CMakeLists.txt b/llvm/lib/PARTS/CMakeLists.txt
 new file mode 100644
-index 00000000000..50f86a56d3b
+index 000000000000..583b59d94c2c
 --- /dev/null
 +++ b/llvm/lib/PARTS/CMakeLists.txt
-@@ -0,0 +1,28 @@
+@@ -0,0 +1,27 @@
 +
 +add_llvm_library(Parts
-+  PartsIntr.cpp
++  #PartsIntr.cpp
 +  PartsType.cpp
-+ 
++
 +  ADDITIONAL_HEADER_DIRS
 +  ${LLVM_MAIN_INCLUDE_DIR}/llvm/PARTS
 +  ${LLVM_MAIN_INCLUDE_DIR}/llvm/Support
 +  ${LLVM_MAIN_INCLUDE_DIR}/llvm/IR
 +
 +  DEPENDS
-+  
++
 +  intrinsics_gen
 +  LLVMCore
 +  LLVMSupport
@@ -123,20 +121,20 @@ index 00000000000..50f86a56d3b
 +  #LLVMObject
 +
 +  LINK_LIBS
-+  
++
 +  LLVMCore
 +  LLVMSupport
-+  LLVMCodeGen 
++  LLVMCodeGen
 +  #LLVMObject
 +  )
 +
 +set_property(TARGET Parts PROPERTY LLVM_SYSTEM_LIBS)
 diff --git a/llvm/lib/PARTS/PartsType.cpp b/llvm/lib/PARTS/PartsType.cpp
 new file mode 100644
-index 00000000000..923a0dbbcb6
+index 000000000000..2e513745978e
 --- /dev/null
 +++ b/llvm/lib/PARTS/PartsType.cpp
-@@ -0,0 +1,235 @@
+@@ -0,0 +1,208 @@
 +#include "llvm/CodeGen/MachineInstr.h"
 +#include "llvm/IR/Metadata.h"
 +#include "llvm/PARTS/PartsType.h"
@@ -198,7 +196,7 @@ index 00000000000..923a0dbbcb6
 +std::vector<std::string> input = {type_str};
 +
 +	std::string output;
-+	
++
 +	for (auto it = input.begin(); it<input.end(); it++){
 +		output=sha256(*it);
 +
@@ -346,30 +344,28 @@ index 00000000000..923a0dbbcb6
 +	return std::string(buf);
 +}
 diff --git a/llvm/lib/Target/RISCV/CMakeLists.txt b/llvm/lib/Target/RISCV/CMakeLists.txt
-index 31a82be1981..07dc887a9b3 100644
+index 9a0c2209c885..555cb6b9ca0c 100644
 --- a/llvm/lib/Target/RISCV/CMakeLists.txt
 +++ b/llvm/lib/Target/RISCV/CMakeLists.txt
-@@ -34,7 +34,15 @@ add_llvm_target(RISCVCodeGen
+@@ -35,6 +35,12 @@ add_llvm_target(RISCVCodeGen
    RISCVTargetMachine.cpp
    RISCVTargetObjectFile.cpp
    RISCVTargetTransformInfo.cpp
--  )
 +  PartsFrameLowering.cpp
-+  PartsPassIntrinsics.cpp
++  #PartsPassIntrinsics.cpp
 +  ../../PARTS/PartsType.cpp
 +
 +  DEPENDS
 +  #intrinsics_gen
-+)
+   )
  
  add_subdirectory(AsmParser)
- add_subdirectory(Disassembler)
 diff --git a/llvm/lib/Target/RISCV/PartsFrameLowering.cpp b/llvm/lib/Target/RISCV/PartsFrameLowering.cpp
 new file mode 100644
-index 00000000000..c6971a6b903
+index 000000000000..a982166c1a4e
 --- /dev/null
 +++ b/llvm/lib/Target/RISCV/PartsFrameLowering.cpp
-@@ -0,0 +1,64 @@
+@@ -0,0 +1,62 @@
 +#include "PartsFrameLowering.h"
 +#include "llvm/CodeGen/MachineInstrBuilder.h"
 +#include "RISCVRegisterInfo.h"
@@ -432,14 +428,13 @@ index 00000000000..c6971a6b903
 +    // BuildMI(MBB, MIi, DL, MCID, RISCV::X1).addReg(RISCV::X30).addReg(RISCV::X1); //rd rs1 rs2
 +    }
 +}
-+
-+
 diff --git a/llvm/lib/Target/RISCV/PartsFrameLowering.h b/llvm/lib/Target/RISCV/PartsFrameLowering.h
 new file mode 100644
-index 00000000000..39cc7527997
+index 000000000000..d19b803be604
 --- /dev/null
 +++ b/llvm/lib/Target/RISCV/PartsFrameLowering.h
-@@ -0,0 +1,47 @@
+@@ -0,0 +1,37 @@
++
 +#ifndef LLVM_PARTSFRAMELOWERING_H
 +#define LLVM_PARTSFRAMELOWERING_H
 +
@@ -476,63 +471,34 @@ index 00000000000..39cc7527997
 +};
 +}
 +#endif //LLVM_PARTSFRAMELOWERING_H
-+
 diff --git a/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp b/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp
-index 915889ac127..1ebb331fe9d 100644
+index 43adc7426c79..d749b3d0e16f 100644
 --- a/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp
 +++ b/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp
-@@ -20,9 +20,10 @@
+@@ -20,6 +20,7 @@
  #include "llvm/CodeGen/RegisterScavenging.h"
  #include "llvm/IR/DiagnosticInfo.h"
  #include "llvm/MC/MCDwarf.h"
 +#include "PartsFrameLowering.h"
  
  using namespace llvm;
--
-+//using namespace llvm::PARTS;
- // Get the ID of the libcall used for spilling and restoring callee saved
- // registers. The ID is representative of the number of registers saved or
- // restored by the libcall, except it is zero-indexed - ID 0 corresponds to a
-@@ -221,7 +222,7 @@ void RISCVFrameLowering::emitPrologue(MachineFunction &MF,
-   Register FPReg = getFPReg(STI);
-   Register SPReg = getSPReg(STI);
-   Register BPReg = RISCVABI::getBPReg();
--
-+    
-   // Since spillCalleeSavedRegisters may have inserted a libcall, skip past
-   // any instructions marked as FrameSetup
-   while (MBBI != MBB.end() && MBBI->getFlag(MachineInstr::FrameSetup))
-@@ -280,10 +281,13 @@ void RISCVFrameLowering::emitPrologue(MachineFunction &MF,
-     StackSize = FirstSPAdjustAmount;
+ 
+@@ -281,6 +282,9 @@ void RISCVFrameLowering::emitPrologue(MachineFunction &MF,
      RealStackSize = FirstSPAdjustAmount;
-   } 
-+  /* RetTag: begin */
-+  PARTS->instrumentPrologue(TII, STI.getRegisterInfo(), MBB, MBBI, DebugLoc());
-   // Allocate space on the stack if necessary.
-   adjustReg(MBB, MBBI, DL, SPReg, SPReg, -StackSize, MachineInstr::FrameSetup);
-+  /* RetTag: end */
-   // Emit ".cfi_def_cfa_offset RealStackSize"
-   unsigned CFIIndex = MF.addFrameInst(
-       MCCFIInstruction::createDefCfaOffset(nullptr, -RealStackSize));
-@@ -440,6 +444,7 @@ void RISCVFrameLowering::emitEpilogue(MachineFunction &MF,
-     assert(hasFP(MF) && "frame pointer should not have been eliminated");
-     adjustReg(MBB, LastFrameDestroy, DL, SPReg, FPReg, -FPOffset,
-               MachineInstr::FrameDestroy);
-+
    }
  
-   uint64_t FirstSPAdjustAmount = getFirstSPAdjustAmount(MF);
-@@ -454,9 +459,17 @@ void RISCVFrameLowering::emitEpilogue(MachineFunction &MF,
++  /* RetTag: begin */
++  PARTS->instrumentPrologue(TII, STI.getRegisterInfo(), MBB, MBBI, DebugLoc());
++  /* RetTag: end */
+   // Allocate space on the stack if necessary.
+   adjustReg(MBB, MBBI, DL, SPReg, SPReg, -StackSize, MachineInstr::FrameSetup);
  
-   if (FirstSPAdjustAmount)
-     StackSize = FirstSPAdjustAmount;
--
+@@ -457,6 +461,12 @@ void RISCVFrameLowering::emitEpilogue(MachineFunction &MF,
+ 
    // Deallocate stack
-+
-+
    adjustReg(MBB, MBBI, DL, SPReg, SPReg, StackSize, MachineInstr::FrameDestroy);
 +  /* RetTag: begin */
-+  if (MFI.getStackSize() - FirstSPAdjustAmount > 0){  
++  if (MFI.getStackSize() - FirstSPAdjustAmount > 0){
 +    const RISCVInstrInfo *TII = STI.getInstrInfo();
 +    PARTS->instrumentEpilogue(TII, RI, MBB, MBBI, DebugLoc());
 +  }
@@ -541,7 +507,7 @@ index 915889ac127..1ebb331fe9d 100644
  
  int RISCVFrameLowering::getFrameIndexReference(const MachineFunction &MF,
 diff --git a/llvm/lib/Target/RISCV/RISCVFrameLowering.h b/llvm/lib/Target/RISCV/RISCVFrameLowering.h
-index 1517c847a04..fd3b1a0717a 100644
+index 1517c847a04c..a4ad2d2b532f 100644
 --- a/llvm/lib/Target/RISCV/RISCVFrameLowering.h
 +++ b/llvm/lib/Target/RISCV/RISCVFrameLowering.h
 @@ -14,6 +14,7 @@
@@ -552,20 +518,19 @@ index 1517c847a04..fd3b1a0717a 100644
  
  namespace llvm {
  class RISCVSubtarget;
-@@ -68,6 +69,10 @@ protected:
+@@ -68,6 +69,7 @@ protected:
    const RISCVSubtarget &STI;
  
  private:
 +  PartsFrameLowering_ptr PARTS = PartsFrameLowering::get();
-+
    void determineFrameLayout(MachineFunction &MF) const;
    void adjustReg(MachineBasicBlock &MBB, MachineBasicBlock::iterator MBBI,
                   const DebugLoc &DL, Register DestReg, Register SrcReg,
 diff --git a/llvm/lib/Target/RISCV/RISCVInstrFormats.td b/llvm/lib/Target/RISCV/RISCVInstrFormats.td
-index 3ed10cca537..7307c947969 100644
+index a47945a6a515..127c60f166b9 100644
 --- a/llvm/lib/Target/RISCV/RISCVInstrFormats.td
 +++ b/llvm/lib/Target/RISCV/RISCVInstrFormats.td
-@@ -75,6 +75,7 @@ def OPC_BRANCH    : RISCVOpcode<0b1100011>;
+@@ -89,6 +89,7 @@ def OPC_BRANCH    : RISCVOpcode<0b1100011>;
  def OPC_JALR      : RISCVOpcode<0b1100111>;
  def OPC_JAL       : RISCVOpcode<0b1101111>;
  def OPC_SYSTEM    : RISCVOpcode<0b1110011>;
@@ -573,7 +538,7 @@ index 3ed10cca537..7307c947969 100644
  
  class RVInst<dag outs, dag ins, string opcodestr, string argstr,
               list<dag> pattern, InstFormat format>
-@@ -313,3 +314,35 @@ class RVInstJ<RISCVOpcode opcode, dag outs, dag ins, string opcodestr,
+@@ -331,3 +332,33 @@ class RVInstJ<RISCVOpcode opcode, dag outs, dag ins, string opcodestr,
    let Inst{11-7} = rd;
    let Opcode = opcode.Value;
  }
@@ -607,15 +572,14 @@ index 3ed10cca537..7307c947969 100644
 +  let Opcode = OPC_PACAUTH.Value;
 +}
 +/* RetTag: end */
-\ No newline at end of file
 diff --git a/llvm/lib/Target/RISCV/RISCVInstrInfo.td b/llvm/lib/Target/RISCV/RISCVInstrInfo.td
-index 12915100aa9..3eed4567dc7 100644
+index 8547f791092b..ac074ba4b509 100644
 --- a/llvm/lib/Target/RISCV/RISCVInstrInfo.td
 +++ b/llvm/lib/Target/RISCV/RISCVInstrInfo.td
-@@ -1159,6 +1159,36 @@ def : Pat<(debugtrap), (EBREAK)>;
+@@ -1170,7 +1170,30 @@ def : Pat<(debugtrap), (EBREAK)>;
+ //===----------------------------------------------------------------------===//
  // Standard extensions
  //===----------------------------------------------------------------------===//
- 
 +/* RetTag: begin */
 +let hasSideEffects = 1,
 +    mayStore = 1, mayLoad = 1 in
@@ -627,19 +591,19 @@ index 12915100aa9..3eed4567dc7 100644
 +defm PAC : SignAuth< 0b0000000, "pac">;
 +defm AUT : SignAuth< 0b0000001, "aut">;
 +
-+def SDT_PAC     : SDTypeProfile<1, 2, [SDTCisPtrTy<0>, SDTCisVT<1,i64>]>;
++//def SDT_PAC     : SDTypeProfile<1, 2, [SDTCisPtrTy<0>, SDTCisVT<1,i64>]>;
 +
-+def  ZACIA     : SDNode<"RISCVISD::ZACIA", SDT_PAC, [SDNPVariadic]>;
-+
++//def  ZACIA     : SDNode<"RISCVISD::ZACIA", SDT_PAC, [SDNPVariadic]>;
++/*
 +let hasSideEffects = 0,
 +    mayStore = 0, mayLoad = 0 in
 +def PACIAA : PARTS <0b0000111,0b111,"paciaa">,Sched<[WriteIALU, ReadIALU]>;
-+
+ 
 +let isPseudo = 1 ,hasSideEffects = 0,
 +    mayStore = 0, mayLoad = 1 in
 +def PARTS_PACIA : Pseudo<(outs GPR:$rd), (ins GPR:$rs1, GPR:$rs2), [(set GPR:$rd, (int_riscv_zacia GPR:$rs1,GPR:$rs2))]>;
++*/
 +/* RetTag: end */
-+
  include "RISCVInstrInfoM.td"
  include "RISCVInstrInfoA.td"
  include "RISCVInstrInfoF.td"
