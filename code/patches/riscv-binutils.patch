@@ -1,0 +1,32 @@
+diff --git a/include/opcode/riscv-opc.h b/include/opcode/riscv-opc.h
+index 0b8cc6c7dd..1f178b13f2 100644
+--- a/include/opcode/riscv-opc.h
++++ b/include/opcode/riscv-opc.h
+@@ -21,6 +21,12 @@
+ #ifndef RISCV_ENCODING_H
+ #define RISCV_ENCODING_H
+ /* Instruction opcode macros.  */
++/* RetTag: begin */
++#define MATCH_PAC 0x700b
++#define MASK_PAC  0xfe00707f
++#define MATCH_AUT 0x200700b
++#define MASK_AUT  0xfe00707f
++/* RetTag: end */
+ #define MATCH_SLLI_RV32 0x1013
+ #define MASK_SLLI_RV32  0xfe00707f
+ #define MATCH_SRLI_RV32 0x5013
+diff --git a/opcodes/riscv-opc.c b/opcodes/riscv-opc.c
+index 2da0f7cf0a..a946d1f76b 100644
+--- a/opcodes/riscv-opc.c
++++ b/opcodes/riscv-opc.c
+@@ -269,6 +269,10 @@ match_vd_eq_vs1_eq_vs2 (const struct riscv_opcode *op,
+ const struct riscv_opcode riscv_opcodes[] =
+ {
+ /* name, xlen, isa, operands, match, mask, match_func, pinfo.  */
++/* RetTag: begin */
++{"pac",         0, INSN_CLASS_I, "d,s,t",     MATCH_PAC, MASK_PAC, match_opcode, 0 },
++{"aut",         0, INSN_CLASS_I, "d,s,t",     MATCH_AUT, MASK_AUT, match_opcode, 0 },
++/* RetTag: end */
+ {"unimp",       0, INSN_CLASS_C, "",          0, 0xffffU, match_opcode, INSN_ALIAS },
+ {"unimp",       0, INSN_CLASS_I, "",          MATCH_CSRRW|(CSR_CYCLE << OP_SH_CSR), 0xffffffffU,  match_opcode, 0 }, /* csrw cycle, x0  */
+ {"ebreak",      0, INSN_CLASS_C, "",          MATCH_C_EBREAK, MASK_C_EBREAK, match_opcode, INSN_ALIAS },
